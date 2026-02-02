@@ -7,7 +7,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 from .config import MODULE_CATEGORIES, MODULE_COLORS
-from .models import Module
+from .models import Module, UserInfo
 
 
 def lighten_color(hex_color: str, factor: float = 0.6) -> str:
@@ -68,13 +68,14 @@ def get_category_info(code: str) -> tuple[str, str]:
     return "Other", "FFFFFF"
 
 
-def generate_excel(modules: list[Module], output_path: str, semester: int):
+def generate_excel(modules: list[Module], output_path: str, semester: int, user_info: UserInfo | None = None):
     """Generate the Excel file with Gantt timeline.
 
     Args:
         modules: List of modules to include
         output_path: Path for the output Excel file
         semester: Semester number for display
+        user_info: Optional user profile information
     """
     print(f"\nGenerating Excel file: {output_path}")
 
@@ -338,6 +339,56 @@ def generate_excel(modules: list[Module], output_path: str, semester: int):
         cell = ws.cell(row=row, column=credits_col)
         cell.font = Font(bold=True, size=10, italic=True, color="9966FF")
         cell.value = f'=SUMIF({get_column_letter(reg_col)}{innovation_first_row}:{get_column_letter(reg_col)}{innovation_last_row},"✓",{get_column_letter(credits_col)}{innovation_first_row}:{get_column_letter(credits_col)}{innovation_last_row})'
+        cell.alignment = center_align
+
+    # User credit summary section
+    if user_info:
+        row += 3
+
+        # Calculate pending credits (registered but student_credits = 0)
+        pending_credits = sum(
+            m.credits for m in modules
+            if m.registered and m.student_credits == 0
+        )
+
+        # Credits validated this year (modulo 60)
+        year_credits = user_info.credits % 60
+
+        # Header
+        summary_fill = PatternFill(start_color="2E75B6", end_color="2E75B6", fill_type="solid")
+        cell = ws.cell(row=row, column=1, value=f"  CREDIT SUMMARY - {user_info.name}")
+        cell.font = Font(bold=True, size=10, color="FFFFFF")
+        for col in range(1, reg_col + 1):
+            ws.cell(row=row, column=col).fill = summary_fill
+            ws.cell(row=row, column=col).border = light_border
+        row += 1
+
+        summary_items = [
+            ("Validated (this year)", year_credits, "228B22"),
+            ("Pending (registered, not validated)", pending_credits, "FF8C00"),
+            ("Year goal", 60, "666666"),
+            ("Remaining to goal", max(0, 60 - year_credits - pending_credits), "C00000"),
+        ]
+
+        for label, value, color in summary_items:
+            cell = ws.cell(row=row, column=1, value=f"  {label}")
+            cell.font = Font(size=9)
+            cell.border = light_border
+
+            cell = ws.cell(row=row, column=credits_col, value=value)
+            cell.font = Font(bold=True, color=color)
+            cell.alignment = center_align
+            cell.border = light_border
+
+            ws.cell(row=row, column=reg_col).border = light_border
+            row += 1
+
+        # Total potential
+        row += 1
+        cell = ws.cell(row=row, column=1, value="  POTENTIAL TOTAL (validated + pending)")
+        cell.font = Font(bold=True, size=9)
+        cell = ws.cell(row=row, column=credits_col, value=year_credits + pending_credits)
+        cell.font = Font(bold=True, size=11, color="2E75B6")
         cell.alignment = center_align
 
     # Column widths

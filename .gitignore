@@ -41,3 +41,7 @@ output/
 
 # Logs
 *.log
+
+# User data
+user.json
+project.json

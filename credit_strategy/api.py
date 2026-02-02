@@ -6,7 +6,7 @@ from datetime import datetime
 import requests
 
 from .config import BASE_URL, MODULES_ENDPOINT, REQUEST_HEADERS
-from .models import Activity, Module
+from .models import Activity, Module, UserInfo
 
 
 def parse_date(date_str: str | None) -> datetime | None:
@@ -110,6 +110,29 @@ class EpitechAPI:
         response = self._request(url)
         return response.json()
 
+    def get_user_info(self) -> UserInfo:
+        """Fetch current user profile information.
+
+        Returns:
+            UserInfo object with user data
+        """
+        url = f"{BASE_URL}/user/?format=json"
+        response = self._request(url)
+        data = response.json()
+
+        gpa_list = data.get("gpa", [])
+        gpa = float(gpa_list[0].get("gpa", 0)) if gpa_list else 0.0
+
+        return UserInfo(
+            login=data.get("login", ""),
+            name=data.get("title", ""),
+            semester=data.get("semester", 0),
+            student_year=data.get("studentyear", 0),
+            promo=data.get("promo", 0),
+            credits=data.get("credits", 0),
+            gpa=gpa
+        )
+
     def fetch_all_modules(self, semester: int) -> list[Module]:
         """Fetch all modules with their activities for a semester.
 
@@ -158,6 +181,7 @@ class EpitechAPI:
                         ))
 
                 registered = details.get("student_registered", 0) == 1
+                student_credits = int(details.get("student_credits", 0) or 0)
 
                 module = Module(
                     id=raw["id"],
@@ -170,11 +194,19 @@ class EpitechAPI:
                     end=parse_date(details.get("end")),
                     scolaryear=scolaryear,
                     activities=activities,
-                    registered=registered
+                    registered=registered,
+                    student_credits=student_credits
                 )
                 modules.append(module)
 
-                status = " [registered]" if registered else ""
+                # Show status: registered + pending or validated
+                if registered:
+                    if student_credits > 0:
+                        status = f" [+{student_credits} validated]"
+                    else:
+                        status = " [pending]"
+                else:
+                    status = ""
                 print(f"OK ({len(activities)} activities){status}")
 
             except Exception as e:

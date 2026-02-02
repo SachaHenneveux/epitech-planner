@@ -77,6 +77,17 @@ To get your cookie:
         print(f"  Connection ERROR: {e}")
         sys.exit(1)
 
+    # Fetch user info
+    print("\nFetching user info...")
+    try:
+        user_info = api.get_user_info()
+        year_credits = user_info.credits % 60  # Credits for current year
+        print(f"  {user_info.name} - Year {user_info.student_year} (Promo {user_info.promo})")
+        print(f"  Total credits: {user_info.credits} | This year: {year_credits}/60 | GPA: {user_info.gpa}")
+    except Exception as e:
+        print(f"  Warning: Could not fetch user info: {e}")
+        user_info = None
+
     # Auto-detect latest semester if not specified
     if args.semester is None:
         semesters = {m.get("semester") for m in raw_modules if m.get("semester")}
@@ -97,7 +108,7 @@ To get your cookie:
         sys.exit(0)
 
     # Generate Excel
-    generate_excel(modules, args.output, args.semester)
+    generate_excel(modules, args.output, args.semester, user_info)
 
     print("\n" + "=" * 60)
     print("Done!")

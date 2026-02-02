@@ -30,3 +30,17 @@ class Module:
     scolaryear: int
     activities: list[Activity] = field(default_factory=list)
     registered: bool = False
+    student_credits: int = 0  # Credits earned (0 = pending if registered)
+
+
+@dataclass
+class UserInfo:
+    """User profile information from Epitech intranet."""
+
+    login: str
+    name: str
+    semester: int
+    student_year: int
+    promo: int
+    credits: int  # Total validated credits
+    gpa: float
