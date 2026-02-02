@@ -133,6 +133,66 @@ class EpitechAPI:
             gpa=gpa
         )
 
+    def fetch_semester_credits(self, semester: int) -> dict:
+        """Fetch credit summary for a semester (quick scan without activities).
+
+        Args:
+            semester: Semester number
+
+        Returns:
+            Dict with credit counts separated by type:
+            - 'pending': Regular module credits (registered, not validated)
+            - 'validated': Regular module credits (validated)
+            - 'innovation_pending': Innovation (G-INN) credits (registered, not validated)
+            - 'innovation_validated': Innovation (G-INN) credits (validated)
+        """
+        raw_modules = self.get_modules_list(semester)
+
+        # Filter for Lyon campus with credits > 0
+        relevant = [
+            m for m in raw_modules
+            if m.get("instance_location") == "FR/LYN"
+            and int(m.get("credits", 0)) > 0
+        ]
+
+        pending = 0
+        validated = 0
+        innovation_pending = 0
+        innovation_validated = 0
+
+        for raw in relevant:
+            code = raw["code"]
+            instance = raw["codeinstance"]
+            scolaryear = raw["scolaryear"]
+            is_innovation = code.startswith("G-INN")
+
+            try:
+                details = self.get_module_details(scolaryear, code, instance)
+                registered = details.get("student_registered", 0) == 1
+                student_credits = int(details.get("student_credits", 0) or 0)
+                module_credits = int(details.get("credits", 0))
+
+                if registered:
+                    if student_credits > 0:
+                        if is_innovation:
+                            innovation_validated += student_credits
+                        else:
+                            validated += student_credits
+                    else:
+                        if is_innovation:
+                            innovation_pending += module_credits
+                        else:
+                            pending += module_credits
+            except Exception:
+                pass
+
+        return {
+            "pending": pending,
+            "validated": validated,
+            "innovation_pending": innovation_pending,
+            "innovation_validated": innovation_validated
+        }
+
     def fetch_all_modules(self, semester: int) -> list[Module]:
         """Fetch all modules with their activities for a semester.
 

@@ -94,13 +94,36 @@ To get your cookie:
         args.semester = max(semesters) if semesters else 1
         print(f"  Auto-detected latest semester: {args.semester}")
 
+    # Calculate year semesters (Year 1 = S1-S2, Year 2 = S3-S4, etc.)
+    # First semester of year: (year - 1) * 2 + 1
+    # Second semester of year: (year - 1) * 2 + 2
+    year_credits_data = {}
+    if user_info:
+        first_sem = (user_info.student_year - 1) * 2 + 1
+        second_sem = first_sem + 1
+
+        print(f"\nFetching year {user_info.student_year} credits (S{first_sem}-S{second_sem})...")
+
+        # Always fetch first semester of the year
+        print(f"  Scanning S{first_sem}...", end=" ", flush=True)
+        s1_data = api.fetch_semester_credits(first_sem)
+        year_credits_data[first_sem] = s1_data
+        print(f"validated={s1_data['validated']}, pending={s1_data['pending']}")
+
+        # Fetch second semester only if we're in it (current semester >= second_sem)
+        if args.semester >= second_sem:
+            print(f"  Scanning S{second_sem}...", end=" ", flush=True)
+            s2_data = api.fetch_semester_credits(second_sem)
+            year_credits_data[second_sem] = s2_data
+            print(f"validated={s2_data['validated']}, pending={s2_data['pending']}")
+
     # Set output path now that we know the semester
     if args.output is None:
         output_dir = Path(__file__).parent.parent / "output"
         output_dir.mkdir(exist_ok=True)
         args.output = str(output_dir / f"credit_strategy_S{args.semester}.xlsx")
 
-    # Fetch modules
+    # Fetch modules for timeline
     modules = api.fetch_all_modules(args.semester)
 
     if not modules:
@@ -108,7 +131,7 @@ To get your cookie:
         sys.exit(0)
 
     # Generate Excel
-    generate_excel(modules, args.output, args.semester, user_info)
+    generate_excel(modules, args.output, args.semester, user_info, year_credits_data)
 
     print("\n" + "=" * 60)
     print("Done!")

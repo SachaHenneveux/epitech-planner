@@ -68,7 +68,13 @@ def get_category_info(code: str) -> tuple[str, str]:
     return "Other", "FFFFFF"
 
 
-def generate_excel(modules: list[Module], output_path: str, semester: int, user_info: UserInfo | None = None):
+def generate_excel(
+    modules: list[Module],
+    output_path: str,
+    semester: int,
+    user_info: UserInfo | None = None,
+    year_credits: dict[int, dict] | None = None
+):
     """Generate the Excel file with Gantt timeline.
 
     Args:
@@ -76,6 +82,7 @@ def generate_excel(modules: list[Module], output_path: str, semester: int, user_
         output_path: Path for the output Excel file
         semester: Semester number for display
         user_info: Optional user profile information
+        year_credits: Optional dict of semester -> {pending, validated} credits
     """
     print(f"\nGenerating Excel file: {output_path}")
 
@@ -342,54 +349,171 @@ def generate_excel(modules: list[Module], output_path: str, semester: int, user_
         cell.alignment = center_align
 
     # User credit summary section
-    if user_info:
+    if user_info and year_credits:
         row += 3
 
-        # Calculate pending credits (registered but student_credits = 0)
-        pending_credits = sum(
-            m.credits for m in modules
-            if m.registered and m.student_credits == 0
-        )
+        # Calculate totals from year credits data (regular modules only)
+        total_validated = sum(s.get("validated", 0) for s in year_credits.values())
+        total_pending = sum(s.get("pending", 0) for s in year_credits.values())
 
-        # Credits validated this year (modulo 60)
-        year_credits = user_info.credits % 60
+        # Calculate innovation totals separately
+        total_innovation_validated = sum(s.get("innovation_validated", 0) for s in year_credits.values())
+        total_innovation_pending = sum(s.get("innovation_pending", 0) for s in year_credits.values())
+
+        # Alternating row colors (very light pastel)
+        row_color_1 = "FFFFFF"  # White
+        row_color_2 = "F8F9FA"  # Very light gray
+        summary_row_index = 0
+
+        def apply_row_style(row_num: int):
+            """Apply alternating background color to summary row."""
+            nonlocal summary_row_index
+            bg_color = row_color_1 if summary_row_index % 2 == 0 else row_color_2
+            fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
+            for col in range(1, reg_col + 1):
+                ws.cell(row=row_num, column=col).fill = fill
+                ws.cell(row=row_num, column=col).border = light_border
+            summary_row_index += 1
 
         # Header
         summary_fill = PatternFill(start_color="2E75B6", end_color="2E75B6", fill_type="solid")
-        cell = ws.cell(row=row, column=1, value=f"  CREDIT SUMMARY - {user_info.name}")
+        cell = ws.cell(row=row, column=1, value=f"CREDIT SUMMARY - Year {user_info.student_year}")
         cell.font = Font(bold=True, size=10, color="FFFFFF")
         for col in range(1, reg_col + 1):
             ws.cell(row=row, column=col).fill = summary_fill
             ws.cell(row=row, column=col).border = light_border
         row += 1
 
-        summary_items = [
-            ("Validated (this year)", year_credits, "228B22"),
-            ("Pending (registered, not validated)", pending_credits, "FF8C00"),
-            ("Year goal", 60, "666666"),
-            ("Remaining to goal", max(0, 60 - year_credits - pending_credits), "C00000"),
-        ]
+        # Right-aligned labels for better readability
+        right_align = Alignment(horizontal='right', vertical='center')
 
-        for label, value, color in summary_items:
-            cell = ws.cell(row=row, column=1, value=f"  {label}")
+        # Per-semester breakdown
+        for sem_num in sorted(year_credits.keys()):
+            sem_data = year_credits[sem_num]
+            validated = sem_data.get("validated", 0)
+            pending = sem_data.get("pending", 0)
+            inn_validated = sem_data.get("innovation_validated", 0)
+            inn_pending = sem_data.get("innovation_pending", 0)
+
+            # Semester header
+            cell = ws.cell(row=row, column=1, value=f"Semester {sem_num}")
+            cell.font = Font(bold=True, size=9, color="2E75B6")
+            cell.alignment = left_align
+            sem_header_fill = PatternFill(start_color="E8F0FE", end_color="E8F0FE", fill_type="solid")
+            for col in range(1, reg_col + 1):
+                ws.cell(row=row, column=col).fill = sem_header_fill
+                ws.cell(row=row, column=col).border = light_border
+            row += 1
+            summary_row_index = 0  # Reset alternating for each semester
+
+            # Validated (projects)
+            cell = ws.cell(row=row, column=1, value="Validated (projects)")
             cell.font = Font(size=9)
-            cell.border = light_border
-
-            cell = ws.cell(row=row, column=credits_col, value=value)
-            cell.font = Font(bold=True, color=color)
+            cell.alignment = right_align
+            apply_row_style(row)
+            cell = ws.cell(row=row, column=credits_col, value=validated)
+            cell.font = Font(bold=True, color="228B22")
             cell.alignment = center_align
-            cell.border = light_border
-
-            ws.cell(row=row, column=reg_col).border = light_border
             row += 1
 
-        # Total potential
+            # Pending (projects)
+            cell = ws.cell(row=row, column=1, value="Pending (projects)")
+            cell.font = Font(size=9)
+            cell.alignment = right_align
+            apply_row_style(row)
+            cell = ws.cell(row=row, column=credits_col, value=pending)
+            cell.font = Font(bold=True, color="FF8C00")
+            cell.alignment = center_align
+            row += 1
+
+            # Innovation validated (if any)
+            if inn_validated > 0 or inn_pending > 0:
+                cell = ws.cell(row=row, column=1, value="Innovation validated (bonus)")
+                cell.font = Font(size=9, italic=True)
+                cell.alignment = right_align
+                apply_row_style(row)
+                cell = ws.cell(row=row, column=credits_col, value=inn_validated)
+                cell.font = Font(bold=True, color="9966FF", italic=True)
+                cell.alignment = center_align
+                row += 1
+
+                # Innovation pending
+                cell = ws.cell(row=row, column=1, value="Innovation pending (bonus)")
+                cell.font = Font(size=9, italic=True)
+                cell.alignment = right_align
+                apply_row_style(row)
+                cell = ws.cell(row=row, column=credits_col, value=inn_pending)
+                cell.font = Font(bold=True, color="9966FF", italic=True)
+                cell.alignment = center_align
+                row += 1
+
+        # Year totals section
         row += 1
-        cell = ws.cell(row=row, column=1, value="  POTENTIAL TOTAL (validated + pending)")
-        cell.font = Font(bold=True, size=9)
-        cell = ws.cell(row=row, column=credits_col, value=year_credits + pending_credits)
-        cell.font = Font(bold=True, size=11, color="2E75B6")
+        totals_header_fill = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+        cell = ws.cell(row=row, column=1, value="YEAR TOTALS")
+        cell.font = Font(bold=True, size=9, color="2E75B6")
+        for col in range(1, reg_col + 1):
+            ws.cell(row=row, column=col).fill = totals_header_fill
+            ws.cell(row=row, column=col).border = light_border
+        row += 1
+        summary_row_index = 0
+
+        # Regular credits summary
+        summary_items = [
+            ("Projects validated", total_validated, "228B22", False),
+            ("Projects pending", total_pending, "FF8C00", False),
+        ]
+
+        # Add innovation if any
+        if total_innovation_validated > 0 or total_innovation_pending > 0:
+            summary_items.extend([
+                ("Innovation validated (bonus)", total_innovation_validated, "9966FF", True),
+                ("Innovation pending (bonus)", total_innovation_pending, "9966FF", True),
+            ])
+
+        summary_items.extend([
+            ("Year goal", 60, "666666", False),
+            ("Remaining to goal", max(0, 60 - total_validated - total_pending), "C00000", False),
+        ])
+
+        for label, value, color, is_italic in summary_items:
+            cell = ws.cell(row=row, column=1, value=label)
+            cell.font = Font(size=9, italic=is_italic)
+            cell.alignment = right_align
+            apply_row_style(row)
+
+            cell = ws.cell(row=row, column=credits_col, value=value)
+            cell.font = Font(bold=True, color=color, italic=is_italic)
+            cell.alignment = center_align
+            row += 1
+
+        # Potential total (projects only - guaranteed)
+        row += 1
+        potential_fill = PatternFill(start_color="E2F0D9", end_color="E2F0D9", fill_type="solid")
+        cell = ws.cell(row=row, column=1, value="POTENTIAL TOTAL (projects)")
+        cell.font = Font(bold=True, size=10)
+        cell.alignment = right_align
+        for col in range(1, reg_col + 1):
+            ws.cell(row=row, column=col).fill = potential_fill
+            ws.cell(row=row, column=col).border = light_border
+        cell = ws.cell(row=row, column=credits_col, value=total_validated + total_pending)
+        cell.font = Font(bold=True, size=11, color="228B22")
         cell.alignment = center_align
+
+        # With innovation (if any)
+        if total_innovation_validated > 0 or total_innovation_pending > 0:
+            row += 1
+            bonus_fill = PatternFill(start_color="F3E5F5", end_color="F3E5F5", fill_type="solid")
+            cell = ws.cell(row=row, column=1, value="WITH INNOVATION (if validated)")
+            cell.font = Font(bold=True, size=10, italic=True)
+            cell.alignment = right_align
+            for col in range(1, reg_col + 1):
+                ws.cell(row=row, column=col).fill = bonus_fill
+                ws.cell(row=row, column=col).border = light_border
+            total_all = total_validated + total_pending + total_innovation_validated + total_innovation_pending
+            cell = ws.cell(row=row, column=credits_col, value=total_all)
+            cell.font = Font(bold=True, size=11, color="9966FF", italic=True)
+            cell.alignment = center_align
 
     # Column widths
     ws.column_dimensions['A'].width = 28
