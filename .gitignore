@@ -45,3 +45,5 @@ output/
 # User data
 user.json
 project.json
+
+*.json
