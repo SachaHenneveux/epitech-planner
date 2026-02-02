@@ -73,7 +73,8 @@ def generate_excel(
     output_path: str,
     semester: int,
     user_info: UserInfo | None = None,
-    year_credits: dict[int, dict] | None = None
+    year_credits: dict[int, dict] | None = None,
+    semester_year: int | None = None
 ):
     """Generate the Excel file with Gantt timeline.
 
@@ -83,6 +84,7 @@ def generate_excel(
         semester: Semester number for display
         user_info: Optional user profile information
         year_credits: Optional dict of semester -> {pending, validated} credits
+        semester_year: Academic year for the semester (calculated from semester number)
     """
     print(f"\nGenerating Excel file: {output_path}")
 
@@ -377,7 +379,8 @@ def generate_excel(
 
         # Header
         summary_fill = PatternFill(start_color="2E75B6", end_color="2E75B6", fill_type="solid")
-        cell = ws.cell(row=row, column=1, value=f"CREDIT SUMMARY - Year {user_info.student_year}")
+        display_year = semester_year if semester_year else user_info.student_year
+        cell = ws.cell(row=row, column=1, value=f"CREDIT SUMMARY - Year {display_year}")
         cell.font = Font(bold=True, size=10, color="FFFFFF")
         for col in range(1, reg_col + 1):
             ws.cell(row=row, column=col).fill = summary_fill

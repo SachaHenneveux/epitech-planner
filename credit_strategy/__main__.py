@@ -94,15 +94,17 @@ To get your cookie:
         args.semester = max(semesters) if semesters else 1
         print(f"  Auto-detected latest semester: {args.semester}")
 
-    # Calculate year semesters (Year 1 = S1-S2, Year 2 = S3-S4, etc.)
-    # First semester of year: (year - 1) * 2 + 1
-    # Second semester of year: (year - 1) * 2 + 2
+    # Calculate year from semester (S1-S2 = Year 1, S3-S4 = Year 2, etc.)
+    # Year = (semester + 1) // 2
+    # First semester of that year: (year - 1) * 2 + 1
+    # Second semester of that year: (year - 1) * 2 + 2
     year_credits_data = {}
+    semester_year = (args.semester + 1) // 2  # Year based on requested semester
     if user_info:
-        first_sem = (user_info.student_year - 1) * 2 + 1
+        first_sem = (semester_year - 1) * 2 + 1
         second_sem = first_sem + 1
 
-        print(f"\nFetching year {user_info.student_year} credits (S{first_sem}-S{second_sem})...")
+        print(f"\nFetching year {semester_year} credits (S{first_sem}-S{second_sem})...")
 
         # Always fetch first semester of the year
         print(f"  Scanning S{first_sem}...", end=" ", flush=True)
@@ -131,7 +133,7 @@ To get your cookie:
         sys.exit(0)
 
     # Generate Excel
-    generate_excel(modules, args.output, args.semester, user_info, year_credits_data)
+    generate_excel(modules, args.output, args.semester, user_info, year_credits_data, semester_year)
 
     print("\n" + "=" * 60)
     print("Done!")
