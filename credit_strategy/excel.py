@@ -10,6 +10,27 @@ from .config import MODULE_CATEGORIES, MODULE_COLORS
 from .models import Module
 
 
+def lighten_color(hex_color: str, factor: float = 0.6) -> str:
+    """Lighten a hex color by blending with white.
+
+    Args:
+        hex_color: Hex color string (e.g., "A8D5BA")
+        factor: 0 = original, 1 = white
+
+    Returns:
+        Lightened hex color string
+    """
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+
+    r = int(r + (255 - r) * factor)
+    g = int(g + (255 - g) * factor)
+    b = int(b + (255 - b) * factor)
+
+    return f"{r:02X}{g:02X}{b:02X}"
+
+
 def get_week_range(start_date: datetime, end_date: datetime) -> list[tuple[datetime, datetime]]:
     """Generate list of week tuples between two dates.
 
@@ -192,9 +213,17 @@ def generate_excel(modules: list[Module], output_path: str, semester: int):
                 ws.cell(row=row, column=col).border = light_border
             row += 1
 
-        # Module color
-        module_color = MODULE_COLORS[color_index % len(MODULE_COLORS)]
+        # Module color - vivid for registered, faded for not registered
+        base_color = MODULE_COLORS[color_index % len(MODULE_COLORS)]
         color_index += 1
+
+        if module.registered:
+            module_color = base_color
+            name_font = Font(size=9, bold=True)
+        else:
+            module_color = lighten_color(base_color, 0.5)
+            name_font = Font(size=9, color="999999")
+
         module_fill = PatternFill(start_color=module_color, end_color=module_color, fill_type="solid")
 
         # Module name (simplified)
@@ -202,7 +231,7 @@ def generate_excel(modules: list[Module], output_path: str, semester: int):
         cell = ws.cell(row=row, column=1, value=module_name)
         cell.border = light_border
         cell.alignment = left_align
-        cell.font = Font(size=9)
+        cell.font = name_font
 
         # Fill week cells with project bars
         for col, (week_start, week_end) in enumerate(weeks, start=2):
@@ -217,7 +246,10 @@ def generate_excel(modules: list[Module], output_path: str, semester: int):
                     if week_start <= act.begin <= week_end:
                         proj_name = act.title.split(" - ")[-1] if " - " in act.title else act.title
                         cell.value = proj_name[:10]
-                        cell.font = Font(size=7, bold=True)
+                        if module.registered:
+                            cell.font = Font(size=7, bold=True)
+                        else:
+                            cell.font = Font(size=7, color="888888")
                         cell.alignment = center_align
                     break
 
