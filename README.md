@@ -1,105 +1,117 @@
-# Credit Strategy
+# Epitech Credit Planner
 
 Generate an Excel Gantt timeline of Epitech projects to plan your credit strategy.
+
+![Result Preview](assets/result.png)
+
+## Features
+
+- Visual timeline of all available projects for a semester
+- Color-coded categories (AI, Security, DevOps, Web, etc.)
+- Credit summary with validated/pending breakdown
+- Auto-detection of your registered modules
 
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/credit-strategy.git
-cd credit-strategy
+git clone https://github.com/SachaHenneveux/epitech-planner.git
+cd epitech-planner
 pip install -e .
 ```
 
-Or without installation:
+## Quick Start
 
 ```bash
-pip install requests openpyxl
+credit-strategy --cookie "YOUR_COOKIE_HERE"
+```
+
+## How to Get Your Cookie
+
+The tool needs your Epitech session cookie to access the intranet API.
+
+![How to get cookie](assets/how_to_get_cookie.gif)
+
+### Step 1: Open the Intranet
+
+Go to [intra.epitech.eu](https://intra.epitech.eu) and make sure you're logged in.
+
+### Step 2: Open Developer Tools
+
+Press `F12` (Windows/Linux) or `Cmd + Option + I` (Mac)
+
+### Step 3: Go to Network Tab
+
+Click on the **Network** tab in DevTools.
+
+### Step 4: Find a Request
+
+1. Refresh the page (`F5` or `Cmd + R`)
+2. In the filter bar, type `format=json` to find API requests
+3. Click on any request in the list (e.g., `filter?format=json`)
+
+### Step 5: Copy the Cookie
+
+1. In the right panel, scroll to **Request Headers**
+2. Find the line that starts with `Cookie:`
+3. Copy the **entire value** after `Cookie:` (it's a very long string)
+
+The cookie looks like this:
+```
+gdpr=1; user=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...; P7GgJZWSsFOt0iVlj89yqMKdNhE=...
+```
+
+> **Important**: The cookie must contain `user=eyJ...` (a JWT token). If it's missing, the authentication will fail.
+
+### Step 6: Run the Tool
+
+```bash
+credit-strategy --cookie "gdpr=1; user=eyJ...; ..."
 ```
 
 ## Usage
 
-### Get your authentication cookie
-
-1. Log in to https://intra.epitech.eu
-2. Open DevTools (`F12` or `Cmd+Option+I`)
-3. Go to the **Network** tab
-4. Refresh the page or navigate to any module page
-5. Look for a request containing `format=json` (e.g., `filter?format=json`)
-6. Click on it, then in **Headers** > **Request Headers**
-7. Find the `Cookie` line and copy the **entire value**
-
-The cookie looks like this (very long string):
-```
-gdpr=1; euconsent-v2=CP...; user=eyJ0eXAi...; ...
-```
-
-### Generate timeline
-
 ```bash
-# If installed
-credit-strategy --cookie "gdpr=1; euconsent-v2=...; user=..."
+# Auto-detect latest semester
+credit-strategy -c "YOUR_COOKIE"
 
-# Without installation
-python -m credit_strategy --cookie "gdpr=1; euconsent-v2=...; user=..."
+# Specific semester
+credit-strategy -c "YOUR_COOKIE" -s 4
+
+# Custom output path
+credit-strategy -c "YOUR_COOKIE" -o ~/Desktop/planning.xlsx
 ```
 
 ### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-c`, `--cookie` | Full cookie string (required) | - |
-| `-s`, `--semester` | Semester number | Latest available |
-| `-o`, `--output` | Output file path | `output/credit_strategy_S{semester}.xlsx` |
-
-### Examples
-
-```bash
-# Latest semester (auto-detected)
-credit-strategy -c "gdpr=1; ..."
-
-# Specific semester
-credit-strategy -c "gdpr=1; ..." -s 3
-
-# Custom output
-credit-strategy -c "gdpr=1; ..." -o ~/Desktop/timeline.xlsx
-```
+| `-c`, `--cookie` | Session cookie (required) | - |
+| `-s`, `--semester` | Semester number (1-10) | Auto-detect |
+| `-o`, `--output` | Output Excel file | `output/credit_strategy_S{n}.xlsx` |
 
 ## Output
 
-The Excel file contains:
+The generated Excel file contains:
 
-- **Module column**: Project names grouped by category
-- **Timeline**: Weeks with colored bars showing project periods
+- **Timeline**: Weekly Gantt chart of all projects
+- **Categories**: Modules grouped by type (AI, Security, DevOps, etc.)
 - **Credits**: Credit value for each module
-- **Reg.**: Checkmark if you're registered
+- **Registration status**: Checkmark for modules you're registered in
+- **Credit Summary**: Validated/pending credits per semester with year totals
 
-### Sections
+## Troubleshooting
 
-- **Regular modules**: Grouped by category (AI, Security, DevOps, etc.)
-- **Innovation**: Bonus credits (separate section at bottom)
+### "Invalid or expired cookie"
 
-### Totals
+Your session has expired. Get a new cookie from the intranet.
 
-- **TOTAL AVAILABLE**: Sum of all module credits
-- **TOTAL REGISTERED**: Sum of credits for modules you're registered in
-- **TOTAL BONUS**: Innovation credits (if validated)
+### "No modules found"
 
-## Project Structure
+Check that you specified the correct semester with `-s`.
 
-```
-credit-strategy/
-├── credit_strategy/
-│   ├── __init__.py     # Package exports
-│   ├── __main__.py     # CLI entry point
-│   ├── api.py          # Epitech API client
-│   ├── config.py       # Constants and colors
-│   ├── excel.py        # Excel generation
-│   └── models.py       # Data models
-├── output/             # Generated files (gitignored)
-├── pyproject.toml
-├── requirements.txt
-└── README.md
-```
+### Cookie doesn't work
+
+Make sure you copied the **entire** cookie value, including the `user=eyJ...` part. The `user` token is required for authentication.
 
 ## License
 
