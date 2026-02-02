@@ -1,0 +1,326 @@
+"""Excel timeline generation for credit strategy visualization."""
+
+from datetime import datetime, timedelta
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
+from .config import MODULE_CATEGORIES, MODULE_COLORS
+from .models import Module
+
+
+def get_week_range(start_date: datetime, end_date: datetime) -> list[tuple[datetime, datetime]]:
+    """Generate list of week tuples between two dates.
+
+    Args:
+        start_date: Start of the period
+        end_date: End of the period
+
+    Returns:
+        List of (week_start, week_end) tuples
+    """
+    weeks = []
+    current = start_date - timedelta(days=start_date.weekday())  # Start from Monday
+
+    while current <= end_date:
+        week_start = current
+        week_end = current + timedelta(days=6)
+        weeks.append((week_start, week_end))
+        current += timedelta(days=7)
+
+    return weeks
+
+
+def get_category_info(code: str) -> tuple[str, str]:
+    """Get category name and color for a module code.
+
+    Args:
+        code: Module code (e.g., "G-AIA-400")
+
+    Returns:
+        Tuple of (category_name, hex_color)
+    """
+    for prefix, (name, color) in MODULE_CATEGORIES.items():
+        if code.startswith(prefix):
+            return name, color
+    return "Other", "FFFFFF"
+
+
+def generate_excel(modules: list[Module], output_path: str, semester: int):
+    """Generate the Excel file with Gantt timeline.
+
+    Args:
+        modules: List of modules to include
+        output_path: Path for the output Excel file
+        semester: Semester number for display
+    """
+    print(f"\nGenerating Excel file: {output_path}")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Semester {semester}"
+
+    if not modules:
+        print("No modules to display")
+        return
+
+    # Filter to keep only Project activities
+    for module in modules:
+        module.activities = [
+            act for act in module.activities
+            if act.type_title == "Project" or "proj" in act.type_title.lower()
+        ]
+
+    # Calculate date range from activities only
+    all_dates = []
+    for module in modules:
+        for act in module.activities:
+            all_dates.extend([act.begin, act.end])
+
+    # Fallback to module dates if no activities
+    if not all_dates:
+        for module in modules:
+            if module.begin:
+                all_dates.append(module.begin)
+            if module.end:
+                all_dates.append(module.end)
+
+    if not all_dates:
+        print("No dates found")
+        return
+
+    min_date = min(all_dates)
+    max_date = max(all_dates)
+    weeks = get_week_range(min_date, max_date)
+
+    print(f"  Period: {min_date.strftime('%d/%m/%Y')} - {max_date.strftime('%d/%m/%Y')}")
+    print(f"  {len(weeks)} weeks, {len(modules)} modules")
+
+    # Styles
+    header_fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
+    header_font = Font(bold=True, size=10, color="FFFFFF")
+    light_border = Border(
+        left=Side(style='thin', color='D9D9D9'),
+        right=Side(style='thin', color='D9D9D9'),
+        top=Side(style='thin', color='D9D9D9'),
+        bottom=Side(style='thin', color='D9D9D9')
+    )
+    center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
+
+    # Header: Module column
+    cell = ws.cell(row=1, column=1, value="Module")
+    cell.font = header_font
+    cell.fill = header_fill
+    cell.border = light_border
+    cell.alignment = center_align
+    ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=1)
+
+    # Header: Week columns with month grouping
+    current_month = None
+    month_start_col = 2
+
+    for col, (week_start, _) in enumerate(weeks, start=2):
+        # Row 2: Week dates
+        cell = ws.cell(row=2, column=col, value=week_start.strftime('%d/%m'))
+        cell.font = Font(size=8, color="666666")
+        cell.alignment = center_align
+        cell.border = light_border
+        cell.fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+
+        # Row 1: Month names (merged)
+        month_name = week_start.strftime("%b %Y")
+        if month_name != current_month:
+            if current_month is not None and col > 2:
+                ws.merge_cells(start_row=1, start_column=month_start_col, end_row=1, end_column=col-1)
+            current_month = month_name
+            month_start_col = col
+
+        cell = ws.cell(row=1, column=col, value=month_name)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center_align
+        cell.border = light_border
+
+    # Merge last month
+    if month_start_col <= len(weeks) + 1:
+        ws.merge_cells(start_row=1, start_column=month_start_col, end_row=1, end_column=len(weeks)+1)
+
+    # Header: Credits column
+    credits_col = len(weeks) + 2
+    cell = ws.cell(row=1, column=credits_col, value="Credits")
+    cell.font = header_font
+    cell.fill = header_fill
+    cell.border = light_border
+    cell.alignment = center_align
+    ws.merge_cells(start_row=1, start_column=credits_col, end_row=2, end_column=credits_col)
+
+    # Header: Registered column
+    reg_col = credits_col + 1
+    cell = ws.cell(row=1, column=reg_col, value="Reg.")
+    cell.font = header_font
+    cell.fill = header_fill
+    cell.border = light_border
+    cell.alignment = center_align
+    ws.merge_cells(start_row=1, start_column=reg_col, end_row=2, end_column=reg_col)
+
+    # Separate Innovation modules (bonus credits)
+    innovation_modules = [m for m in modules if m.code.startswith("G-INN")]
+    regular_modules = [m for m in modules if not m.code.startswith("G-INN")]
+
+    # Sort by category then by start date
+    regular_modules.sort(key=lambda m: (get_category_info(m.code)[0], m.begin or datetime.max))
+
+    # Write module rows
+    row = 3
+    current_category = None
+    color_index = 0
+    first_data_row = row
+
+    for module in regular_modules:
+        category_name, _ = get_category_info(module.code)
+
+        # Category separator row
+        if category_name != current_category:
+            current_category = category_name
+            cell = ws.cell(row=row, column=1, value=f"  {category_name}")
+            cell.font = Font(bold=True, size=9, italic=True, color="666666")
+            cat_fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+            for col in range(1, reg_col + 1):
+                ws.cell(row=row, column=col).fill = cat_fill
+                ws.cell(row=row, column=col).border = light_border
+            row += 1
+
+        # Module color
+        module_color = MODULE_COLORS[color_index % len(MODULE_COLORS)]
+        color_index += 1
+        module_fill = PatternFill(start_color=module_color, end_color=module_color, fill_type="solid")
+
+        # Module name (simplified)
+        module_name = module.title.replace(f"G{semester} - ", "")
+        cell = ws.cell(row=row, column=1, value=module_name)
+        cell.border = light_border
+        cell.alignment = left_align
+        cell.font = Font(size=9)
+
+        # Fill week cells with project bars
+        for col, (week_start, week_end) in enumerate(weeks, start=2):
+            cell = ws.cell(row=row, column=col)
+            cell.border = light_border
+
+            for act in module.activities:
+                if week_start <= act.end and week_end >= act.begin:
+                    cell.fill = module_fill
+
+                    # Show project name at start of period
+                    if week_start <= act.begin <= week_end:
+                        proj_name = act.title.split(" - ")[-1] if " - " in act.title else act.title
+                        cell.value = proj_name[:10]
+                        cell.font = Font(size=7, bold=True)
+                        cell.alignment = center_align
+                    break
+
+        # Credits cell
+        cell = ws.cell(row=row, column=credits_col, value=module.credits)
+        cell.border = light_border
+        cell.alignment = center_align
+        cell.font = Font(bold=True)
+
+        # Registered cell
+        cell = ws.cell(row=row, column=reg_col)
+        cell.border = light_border
+        cell.alignment = center_align
+        if module.registered:
+            cell.value = "✓"
+            cell.font = Font(bold=True, color="228B22", size=12)
+            cell.fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid")
+
+        row += 1
+
+    last_data_row = row - 1
+
+    # Total available credits
+    row += 1
+    ws.cell(row=row, column=1, value="TOTAL AVAILABLE").font = Font(bold=True, size=10)
+    cell = ws.cell(row=row, column=credits_col)
+    cell.font = Font(bold=True, size=10)
+    cell.value = f"=SUM({get_column_letter(credits_col)}{first_data_row}:{get_column_letter(credits_col)}{last_data_row})"
+    cell.alignment = center_align
+
+    # Total registered credits
+    row += 1
+    ws.cell(row=row, column=1, value="TOTAL REGISTERED").font = Font(bold=True, size=10, color="228B22")
+    cell = ws.cell(row=row, column=credits_col)
+    cell.font = Font(bold=True, size=10, color="228B22")
+    cell.value = f'=SUMIF({get_column_letter(reg_col)}{first_data_row}:{get_column_letter(reg_col)}{last_data_row},"✓",{get_column_letter(credits_col)}{first_data_row}:{get_column_letter(credits_col)}{last_data_row})'
+    cell.alignment = center_align
+
+    # Innovation section (bonus credits)
+    if innovation_modules:
+        row += 2
+
+        # Innovation header
+        cell = ws.cell(row=row, column=1, value="  INNOVATION (Bonus credits)")
+        cell.font = Font(bold=True, size=9, italic=True, color="9966FF")
+        bonus_fill = PatternFill(start_color="F3E5F5", end_color="F3E5F5", fill_type="solid")
+        for col in range(1, reg_col + 1):
+            ws.cell(row=row, column=col).fill = bonus_fill
+            ws.cell(row=row, column=col).border = light_border
+        row += 1
+
+        innovation_first_row = row
+
+        for module in innovation_modules:
+            module_fill = PatternFill(start_color="E1BEE7", end_color="E1BEE7", fill_type="solid")
+
+            module_name = module.title.replace(f"G{semester} - ", "")
+            cell = ws.cell(row=row, column=1, value=module_name)
+            cell.border = light_border
+            cell.alignment = left_align
+            cell.font = Font(size=9, italic=True)
+
+            for col in range(2, len(weeks) + 2):
+                ws.cell(row=row, column=col).border = light_border
+
+            cell = ws.cell(row=row, column=credits_col, value=module.credits)
+            cell.border = light_border
+            cell.alignment = center_align
+            cell.font = Font(italic=True, color="9966FF")
+
+            cell = ws.cell(row=row, column=reg_col)
+            cell.border = light_border
+            cell.alignment = center_align
+            if module.registered:
+                cell.value = "✓"
+                cell.font = Font(bold=True, color="9966FF", size=12)
+                cell.fill = PatternFill(start_color="E8D5F0", end_color="E8D5F0", fill_type="solid")
+
+            row += 1
+
+        innovation_last_row = row - 1
+
+        # Bonus total
+        row += 1
+        ws.cell(row=row, column=1, value="TOTAL BONUS (if validated)").font = Font(bold=True, size=10, italic=True, color="9966FF")
+        cell = ws.cell(row=row, column=credits_col)
+        cell.font = Font(bold=True, size=10, italic=True, color="9966FF")
+        cell.value = f'=SUMIF({get_column_letter(reg_col)}{innovation_first_row}:{get_column_letter(reg_col)}{innovation_last_row},"✓",{get_column_letter(credits_col)}{innovation_first_row}:{get_column_letter(credits_col)}{innovation_last_row})'
+        cell.alignment = center_align
+
+    # Column widths
+    ws.column_dimensions['A'].width = 28
+    for col in range(2, len(weeks) + 2):
+        ws.column_dimensions[get_column_letter(col)].width = 5.5
+    ws.column_dimensions[get_column_letter(credits_col)].width = 7
+    ws.column_dimensions[get_column_letter(reg_col)].width = 5
+
+    # Freeze panes
+    ws.freeze_panes = 'B3'
+
+    # Row heights
+    for r in range(3, row + 1):
+        ws.row_dimensions[r].height = 18
+
+    wb.save(output_path)
+    print(f"  File saved: {output_path}")
